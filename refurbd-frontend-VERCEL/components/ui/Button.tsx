@@ -1,4 +1,7 @@
-import { ButtonHTMLAttributes } from 'react'
-export default function Button(props: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button {...props} className={(props.className||'') + ' px-3 py-2 rounded bg-black text-white'} />
-}
+import * as React from 'react'
+import { clsx } from 'clsx'
+export default React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
+  function Button({ className, ...props }, ref) {
+    return <button ref={ref} className={clsx('btn btn-primary', className)} {...props} />
+  }
+)

@@ -11,11 +11,15 @@
     "next": "14.2.5",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "clsx": "2.0.0"
+    "clsx": "2.1.0",
+    "lucide-react": "0.439.0"
   },
   "devDependencies": {
     "typescript": "5.6.3",
     "@types/react": "18.2.73",
-    "@types/node": "20.11.30"
+    "@types/node": "20.11.30",
+    "tailwindcss": "3.4.10",
+    "postcss": "8.4.47",
+    "autoprefixer": "10.4.20"
   }
 }
