@@ -1,6 +1,6 @@
 
 'use client'
-import Container from '@/components/ui/Container'
+import Container from '@/components/ui/container'
 import AdminQueueTable from '@/components/AdminQueueTable'
 import { useAuth } from '@/hooks/useAuth'
 import { useEffect } from 'react'

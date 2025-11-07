@@ -1,8 +1,8 @@
 
 'use client'
-import Container from '@/components/ui/Container'
-import Card from '@/components/ui/Card'
-import Button from '@/components/ui/Button'
+import Container from '@/components/ui/container'
+import Card from '@/components/ui/card'
+import Button from '@/components/ui/button'
 import UploadCard from '@/components/UploadCard'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'

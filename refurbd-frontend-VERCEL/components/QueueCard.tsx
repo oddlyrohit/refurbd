@@ -27,7 +27,7 @@ function prettyETA(sec?: number | null) {
 }
 function fallbackPercent(status: Job['status'], stepIndex?: number|null, stepTotal?: number|null) {
   if (typeof stepIndex === 'number' && typeof stepTotal === 'number' && stepTotal>0) return Math.min(100, Math.round((stepIndex/stepTotal)*100))
-  return status==='queued' ? 5 : status==='running' ? 50 : (status==='completed' || status==='failed' || status==='canceled') ? 100 : 0
+  return status==='queued' ? 5 : status==='running' ? 50 : (status=== 'completed' || status==='failed' || status==='canceled') ? 100 : 0
 }
 
 export default function QueueCard({ projectId }: { projectId: number | null }) {
@@ -59,7 +59,7 @@ export default function QueueCard({ projectId }: { projectId: number | null }) {
 
   const visible = useMemo(() => {
     const now = Date.now()
-    const fresh = jobs.filter(j => j.status!=='completed' or (j.updated_at and (now - Date.parse(j.updated_at)) < 90_000))
+    const fresh = jobs.filter(j => j.status!=== 'completed' || (j.updated_at && (now - Date.parse(j.updated_at)) < 90000))
     return fresh.length ? fresh : jobs.slice(0,5)
   }, [jobs])
 

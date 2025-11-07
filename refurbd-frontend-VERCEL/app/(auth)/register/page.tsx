@@ -1,9 +1,9 @@
 
 'use client'
 import React, { useState } from 'react'
-import Container from '@/components/ui/Container'
-import Card from '@/components/ui/Card'
-import Button from '@/components/ui/Button'
+import Container from '@/components/ui/container'
+import Card from '@/components/ui/card'
+import Button from '@/components/ui/button'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
 
