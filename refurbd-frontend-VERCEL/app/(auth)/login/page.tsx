@@ -1,4 +1,3 @@
-
 'use client'
 import React, { useState } from 'react'
 import Container from '@/components/ui/Container'
@@ -7,32 +6,20 @@ import Button from '@/components/ui/Button'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
 
-export default function LoginPage() {
+export default function LoginPage(){
   const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [err, setErr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setBusy(true); setErr(null)
-    try { await login(email, password) }
-    catch (e:any) { setErr(e.message || 'Login failed') }
-    finally { setBusy(false) }
-  }
-
+  const [err, setErr] = useState<string|null>(null)
   return (
-    <Container className="py-16">
-      <Card className="mx-auto max-w-md p-6">
-        <h1 className="mb-2 text-xl font-bold">Sign in</h1>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <input className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Email" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} />
-          <input className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-900" placeholder="Password" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} />
-          {err && <div className="text-xs text-rose-600">{err}</div>}
-          <Button className="w-full" disabled={busy}>{busy?'Signing in…':'Sign in'}</Button>
-          <div className="text-center text-xs">No account? <Link href="/register" className="underline">Create one</Link></div>
-        </form>
+    <Container>
+      <Card className="max-w-sm mx-auto space-y-3">
+        <h1 className="text-lg font-semibold">Log in</h1>
+        {err && <div className="text-sm text-red-600">{err}</div>}
+        <input className="w-full rounded border p-2" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
+        <input className="w-full rounded border p-2" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
+        <Button onClick={async ()=>{ try{ await login(email,password) }catch(e:any){ setErr(e.message||'Failed') } }}>Login</Button>
+        <div className="text-sm">No account? <Link className="underline" href="/(auth)/register">Register</Link></div>
       </Card>
     </Container>
   )
