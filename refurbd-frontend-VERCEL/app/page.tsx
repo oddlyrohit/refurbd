@@ -17,22 +17,21 @@ export const metadata = {
 
 export default function Home() {
   return (
-    <section className="hero-gradient section">
-      <Container>
-        <div className="mx-auto max-w-4xl text-center">
-          <h1 className="h1">Renovation design, simplified.</h1>
-          <p className="lead mx-auto mt-4 max-w-2xl">
-            Upload, analyse, and render options. Track job progress live via WebSockets at 20/50/80% milestones.
-          </p>
-          <div className="mt-8 flex items-center justify-center gap-3">
-            <Link href="/(auth)/login" className="btn btn-primary">Get started</Link>
-            <Link href="/workspace" className="btn border">Open Workspace</Link>
+    <>
+      <section className="hero-gradient section">
+        <Container>
+          <div className="mx-auto max-w-4xl text-center">
+            <h1 className="h1">Renovation design, simplified.</h1>
+            <p className="lead mx-auto mt-4 max-w-2xl">
+              Upload, analyse, and render options. Track job progress live via WebSockets at 20/50/80% milestones.
+            </p>
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <Link href="/(auth)/login" className="btn btn-primary">Get started</Link>
+              <Link href="/workspace" className="btn border">Open Workspace</Link>
+            </div>
           </div>
-        </div>
-      </Container>
-    </section>
-  )
-}
+        </Container>
+      </section>
 
       <section className="section">
         <div className="container grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -58,3 +57,6 @@ export default function Home() {
           </div>
         </div>
       </footer>
+    </>
+  )
+}
