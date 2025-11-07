@@ -18,10 +18,10 @@ export default function WorkspacePage(){
   },[])
 
   return (
-    <section className="py-10">
+    <section className="section">
       <Container className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-2 space-y-6">
-          <Card className="p-5">
+          <Card className="p-6">
             <div className="mb-3 text-sm font-semibold">Projects</div>
             <div className="flex flex-wrap gap-2">
               {projects.length === 0 && <div className="text-sm text-slate-500">No projects yet.</div>}
@@ -32,7 +32,7 @@ export default function WorkspacePage(){
               ))}
             </div>
           </Card>
-          <Card className="p-5">
+          <Card className="p-6">
             <div className="text-sm font-semibold mb-3">Renderings</div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               <div className="aspect-video rounded-lg border bg-slate-100" />
