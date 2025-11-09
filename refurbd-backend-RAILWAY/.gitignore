@@ -1,0 +1,19 @@
+﻿# secrets
+.env
+*.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.envrc
+.python-version
+
+# local artifacts
+uploads/
+.alembic/
+
+# node leftovers (if any)
+node_modules/
+dist/

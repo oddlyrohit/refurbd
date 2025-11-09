@@ -1,104 +1,91 @@
+# app/main.py
 import os
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from typing import List
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
-try:
-    from starlette.middleware.trustedhost import TrustedHostMiddleware
-except Exception:  # pragma: no cover
-    TrustedHostMiddleware = None  # optional
+def _csv_env(name: str, default: str = "") -> List[str]:
+    s = os.getenv(name, default)
+    return [x.strip() for x in s.split(",") if x.strip()]
 
-# ---------------------------
-# App
-# ---------------------------
-app = FastAPI(title="Refurbd API")
+API_PREFIX = os.getenv("API_PREFIX", "/api").strip() or ""
+CORS_ORIGINS = _csv_env(
+    "CORS_ORIGINS",
+    "http://localhost:3000,https://*.vercel.app,https://refurbd.com.au,https://www.refurbd.com.au",
+)
 
-# ---------------------------
-# Health endpoints
-# ---------------------------
-@app.get("/health", include_in_schema=False)
-async def _health():
-    return {"ok": True, "service": "refurbd-backend"}
+app = FastAPI(title="Refurbd API", version="0.1.0")
 
-@app.get("/healthz", include_in_schema=False)
-async def _healthz():
-    return PlainTextResponse("ok", status_code=200)
-
-# ---------------------------
-# CORS
-# ---------------------------
-default_allow = "http://localhost:3000,https://*.vercel.app,https://refurbd.com.au,https://www.refurbd.com.au"
-allow_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", default_allow).split(",") if o.strip()]
+# CORS & sessions/cookies
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_origins,
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET", os.getenv("JWT_SECRET", "change-me")),
+    same_site="none",  # allow cross-site cookies
+    https_only=True,
+)
 
-# ---------------------------
-# Trusted hosts (for Railway)
-# ---------------------------
-default_hosts = "*.up.railway.app,localhost,127.0.0.1,healthcheck.railway.app,refurbd.com.au,*.refurbd.com.au"
-if TrustedHostMiddleware:
-    hosts = [h.strip() for h in os.getenv("TRUSTED_HOSTS", default_hosts).split(",") if h.strip()]
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
+# ---- basic health + env introspection ----
+@app.get("/health")
+@app.get(f"{API_PREFIX}/health")
+def health():
+    return {"ok": True}
 
-# ---------------------------
-# Routers (mounted under API_PREFIX, default '/api')
-# ---------------------------
-API_PREFIX = os.getenv("API_PREFIX", "/api")
-try:
-    # Prefer a single aggregator router if present
-    from app.api import routes as api_routes  # type: ignore
-    if hasattr(api_routes, "router"):
-        app.include_router(api_routes.router, prefix=API_PREFIX)
-    else:
-        raise ImportError("app.api.routes has no 'router'")
-except Exception:
-    # Fallback: include known route modules one by one
-    try:
-        from app.api.routes.auth import router as auth_router  # type: ignore
-        app.include_router(auth_router, prefix=API_PREFIX)
-    except Exception:
-        pass
-    try:
-        from app.api.routes.projects import router as projects_router  # type: ignore
-        app.include_router(projects_router, prefix=API_PREFIX)
-    except Exception:
-        pass
-    try:
-        from app.api.routes.renderings import router as renderings_router  # type: ignore
-        app.include_router(renderings_router, prefix=API_PREFIX)
-    except Exception:
-        pass
-    try:
-        from app.api.routes.billing import router as billing_router  # type: ignore
-        app.include_router(billing_router, prefix=API_PREFIX)
-    except Exception:
-        pass
-    try:
-        from app.api.routes.admin import router as admin_router  # type: ignore
-        app.include_router(admin_router, prefix=API_PREFIX)
-    except Exception:
-        pass
-    try:
-        from app.api.routes.websockets import router as ws_router  # type: ignore
-        app.include_router(ws_router, prefix=API_PREFIX)
-    except Exception:
-        pass
+@app.get(f"{API_PREFIX}/auth/env")
+def env_probe():
+    # helpful when debugging on Vercel: shows where the FE is pointing
+    backend_host = (
+        os.getenv("BACKEND_URL")
+        or os.getenv("RAILWAY_PUBLIC_DOMAIN")
+        or os.getenv("ORIGIN")
+        or ""
+    )
+    return {
+        "ok": True,
+        "backendUrlDefined": bool(backend_host),
+        "backendUrlPreview": backend_host,
+        "authPrefix": API_PREFIX + "/auth" if API_PREFIX else "/auth",
+    }
 
-# ---------------------------
-# Error handler
-# ---------------------------
-@app.exception_handler(Exception)
-async def _global_exception_handler(request: Request, exc: Exception):
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+# ---- mount the same auth router on both /auth and /api/auth ----
+def _try_import_auth_router():
+    try:
+        # common patterns
+        from app.api.auth import router as auth_router
+        return auth_router
+    except Exception:
+        pass
+    try:
+        from app.routes.auth import router as auth_router
+        return auth_router
+    except Exception:
+        pass
+    try:
+        from app.auth import router as auth_router
+        return auth_router
+    except Exception:
+        pass
+    return None
 
-# ---------------------------
-# Root
-# ---------------------------
-@app.get("/", include_in_schema=False)
-def root():
-    return {"message": "Refurbd API", "ok": True}
+_auth = _try_import_auth_router()
+if _auth:
+    # Unprefixed (/auth/*)
+    app.include_router(_auth, prefix="/auth", tags=["auth"])
+    # Prefixed (/api/auth/*) to match your FE fallback chain
+    if API_PREFIX:
+        app.include_router(_auth, prefix=f"{API_PREFIX}/auth", tags=["auth"])
+else:
+    # If we can't import, expose a clear hint
+    @app.get(f"{API_PREFIX}/auth/login")
+    def _missing_login_hint():
+        return {"ok": False, "error": "auth_router_missing"}
+
+# (Optional) mount any other routers the same way if you add them later.

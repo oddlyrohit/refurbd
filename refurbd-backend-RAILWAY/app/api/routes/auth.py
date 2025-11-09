@@ -1,110 +1,83 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, Depends, HTTPException, status, Response
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from jose import JWTError, jwt
+from typing import Optional
 from app.db.session import get_db
 from app.db.models.user import User
-from app.schemas import UserCreate, UserLogin, Token, UserResponse
-from app.core.security import verify_password, get_password_hash, create_access_token, get_current_active_user
-from app.services.email_service import email_service
-from datetime import timedelta
+from app.db.models import Base
+from app.core.security import hash_password, verify_password, create_access_token
 from app.core.config import settings
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+class Credentials(BaseModel):
+    email: EmailStr
+    password: str
 
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
-@router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
-async def register(
-    user_data: UserCreate,
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-):
-    """Register a new user."""
-    
-    # Check if user exists
-    result = await db.execute(select(User).where(User.email == user_data.email))
-    existing_user = result.scalar_one_or_none()
-    
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Get IP for location (basic geolocation)
-    ip_address = request.client.host
-    
-    # Create user
-    new_user = User(
-        email=user_data.email,
-        hashed_password=get_password_hash(user_data.password),
-        full_name=user_data.full_name,
-        ip_address=ip_address,
-    )
-    
-    db.add(new_user)
+class UserOut(BaseModel):
+    id: str
+    email: EmailStr
+
+router = APIRouter()
+
+COOKIE_NAME = "refurbd_token"
+
+@router.post("/register", response_model=TokenOut)
+async def register(data: Credentials, response: Response, db: AsyncSession = Depends(get_db)):
+    # check existing
+    res = await db.execute(select(User).where(User.email == data.email.lower()))
+    if res.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user = User(email=data.email.lower(), password_hash=hash_password(data.password))
+    db.add(user)
     await db.commit()
-    await db.refresh(new_user)
-    
-    # Send welcome email (don't wait)
+    token = create_access_token(str(user.id))
+    _set_cookie(response, token)
+    return TokenOut(access_token=token)
+
+@router.post("/login", response_model=TokenOut)
+async def login(data: Credentials, response: Response, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(User).where(User.email == data.email.lower()))
+    user = res.scalar_one_or_none()
+    if user is None or not verify_password(data.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    token = create_access_token(str(user.id))
+    _set_cookie(response, token)
+    return TokenOut(access_token=token)
+
+def _set_cookie(response: Response, token: str):
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=settings.JWT_EXPIRES_MIN * 60,
+        path="/",
+    )
+
+def _decode_token(token: str) -> Optional[str]:
     try:
-        await email_service.send_welcome_email(
-            new_user.email,
-            new_user.full_name or "there"
-        )
-    except Exception as e:
-        print(f"Failed to send welcome email: {e}")
-    
-    # Create access token
-    access_token = create_access_token(
-        data={"sub": str(new_user.id)},
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    
-    return Token(
-        access_token=access_token,
-        user=UserResponse.model_validate(new_user)
-    )
+        payload = jwt.get_unverified_claims(token)
+        return payload.get("sub")
+    except Exception:
+        return None
 
-
-@router.post("/login", response_model=Token)
-async def login(
-    credentials: UserLogin,
-    db: AsyncSession = Depends(get_db)
-):
-    """Login and get access token."""
-    
-    # Find user
-    result = await db.execute(select(User).where(User.email == credentials.email))
-    user = result.scalar_one_or_none()
-    
-    if not user or not verify_password(credentials.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
-        )
-    
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive account"
-        )
-    
-    # Create access token
-    access_token = create_access_token(
-        data={"sub": str(user.id)},
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    
-    return Token(
-        access_token=access_token,
-        user=UserResponse.model_validate(user)
-    )
-
-
-@router.get("/me", response_model=UserResponse)
-async def get_current_user_info(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """Get current user information."""
-    return UserResponse.model_validate(current_user)
+@router.get("/me", response_model=UserOut)
+async def me(token: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    # token through cookie preferred
+    user_id = None
+    if token:
+        user_id = _decode_token(token)
+    user = None
+    if user_id:
+        res = await db.execute(select(User).where(User.id == user_id))
+        user = res.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorised")
+    return UserOut(id=str(user.id), email=user.email)
