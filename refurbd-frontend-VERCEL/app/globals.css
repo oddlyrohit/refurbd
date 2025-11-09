@@ -1,64 +1,7 @@
+/* Global styles loaded by app/layout.tsx */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- Base ---------- */
-@layer base {
-  html, body, :root { height: 100%; }
-
-  body {
-    @apply bg-slate-50 text-slate-800 antialiased;
-  }
-
-  .dark body {
-    @apply bg-slate-950 text-slate-100;
-  }
-
-  a {
-    @apply text-slate-900 underline-offset-4 hover:underline;
-  }
-}
-
-/* ---------- Components (cards, buttons, badges) ---------- */
-@layer components {
-  /* Container helper used in pages */
-  .container {
-    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
-  }
-
-  /* Card */
-  .card {
-    @apply rounded-2xl border border-slate-200/70 bg-white;
-    /* Put the shadow here directly so we don't need a custom Tailwind utility */
-    box-shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
-  }
-  .dark .card {
-    @apply border-slate-700/60 bg-slate-900;
-    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.35);
-  }
-
-  /* Buttons */
-  .btn {
-    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition;
-  }
-
-  .btn-primary {
-    @apply bg-black text-white hover:bg-slate-900;
-  }
-  .dark .btn-primary {
-    @apply bg-white text-black hover:bg-slate-200;
-  }
-
-  /* Badges / pills */
-  .badge {
-    @apply inline-flex items-center gap-2 rounded-full border border-slate-200/70 bg-white px-3 py-1 text-xs text-slate-700;
-  }
-  .dark .badge {
-    @apply border-slate-700/60 bg-slate-900 text-slate-200;
-  }
-}
-
-/* ---------- Utilities ---------- */
-@layer utilities {
-  .text-balance { text-wrap: balance; }
-}
+html, body { height: 100%; background: white; }
+* { box-sizing: border-box; }
