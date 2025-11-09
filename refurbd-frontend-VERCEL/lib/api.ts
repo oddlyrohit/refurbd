@@ -1,5 +1,5 @@
 // Central API helpers (stubs + simple proxies).
-// This file is safe for production build and can be swapped later for real endpoints.
+// Compatible with components expecting snake_case (updated_at) or camelCase (updatedAt).
 
 export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 export type Job = {
@@ -7,8 +7,9 @@ export type Job = {
   status: JobStatus;
   progress: number;        // 0..100
   title?: string;
-  createdAt: string;       // ISO string
-  updatedAt?: string;      // ISO string
+  createdAt: string;       // ISO
+  updatedAt?: string;      // ISO (camelCase)
+  updated_at?: string;     // ISO (snake_case) - legacy compatibility
   meta?: Record<string, any>;
 };
 
@@ -45,7 +46,7 @@ export async function logout() {
   return true;
 }
 
-// ---- Asset flow (stubs you can replace later) ----
+// ---- Asset flow (stubs) ----
 export async function presignUpload(filename: string, mime: string): Promise<PresignResult> {
   return { assetId: 'stub-' + Math.random().toString(36).slice(2), url: 'about:blank' };
 }
@@ -60,13 +61,14 @@ export async function commitAsset(args: { assetId: string; projectId: string; ro
 
 // ---- Jobs API (stubbed) ----
 export async function listJobs(projectId?: string): Promise<Job[]> {
-  // Provide a stable shape so UI can render in dev/prod builds.
   const now = new Date();
+  const iso = now.toISOString();
+  // Provide both updatedAt and updated_at so either code path compiles and runs.
   return [
-    { id: 'job-1', status: 'processing', progress: 42, title: 'Kitchen render', createdAt: now.toISOString() },
-    { id: 'job-2', status: 'queued',     progress: 0,  title: 'Bathroom render', createdAt: now.toISOString() },
-    { id: 'job-3', status: 'completed',  progress: 100, title: 'Living room', createdAt: now.toISOString() }
+    { id: 'job-1', status: 'processing', progress: 42, title: 'Kitchen render', createdAt: iso, updatedAt: iso, updated_at: iso },
+    { id: 'job-2', status: 'queued',     progress: 0,  title: 'Bathroom render', createdAt: iso, updatedAt: iso, updated_at: iso },
+    { id: 'job-3', status: 'completed',  progress: 100, title: 'Living room', createdAt: iso, updatedAt: iso, updated_at: iso }
   ];
 }
 
-export const apiVersion = 'stub-2';
+export const apiVersion = 'stub-3';
