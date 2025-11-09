@@ -1,4 +1,3 @@
-# app/main.py
 import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -6,96 +5,99 @@ from fastapi.middleware.cors import CORSMiddleware
 
 try:
     from starlette.middleware.trustedhost import TrustedHostMiddleware
-except Exception:
-    TrustedHostMiddleware = None  # middleware optional
+except Exception:  # pragma: no cover
+    TrustedHostMiddleware = None  # optional
 
+# ---------------------------
+# App
+# ---------------------------
 app = FastAPI(title="Refurbd API")
 
-# -------------------------------------------------
-# Health: guaranteed 200 and bypass any middleware
-# -------------------------------------------------
-@app.middleware("http")
-async def _health_bypass(request: Request, call_next):
-    if request.url.path == "/__health":
-        # Plain text, zero dependencies, always 200
-        return PlainTextResponse("ok")
-    return await call_next(request)
-
-@app.get("/__health", include_in_schema=False)
-def __health():
-    return PlainTextResponse("ok")
-
+# ---------------------------
+# Health endpoints
+# ---------------------------
 @app.get("/health", include_in_schema=False)
-def health_root():
-    return {"ok": True}
+async def _health():
+    return {"ok": True, "service": "refurbd-backend"}
 
-@app.get("/api/health", include_in_schema=False)
-def health_api():
-    return {"ok": True}
+@app.get("/healthz", include_in_schema=False)
+async def _healthz():
+    return PlainTextResponse("ok", status_code=200)
 
 # ---------------------------
-# CORS (from environment)
+# CORS
 # ---------------------------
-frontend_url = os.getenv("FRONTEND_URL", "").strip()
-cors_env = os.getenv("CORS_ORIGINS", "").strip()
-
-cors_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
-if frontend_url and frontend_url not in cors_origins:
-    cors_origins.append(frontend_url)
-
-# If nothing provided, allow the site origin only; fall back to "*" during bring-up
-allow_list = cors_origins if cors_origins else ["*"]
-
+default_allow = "http://localhost:3000,https://*.vercel.app,https://refurbd.com.au,https://www.refurbd.com.au"
+allow_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", default_allow).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_list,
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ---------------------------
-# Trusted Host (so Railway healthcheck isn’t blocked)
+# Trusted hosts (for Railway)
 # ---------------------------
-default_hosts = "*.up.railway.app,healthcheck.railway.app,api.refurbd.com.au,localhost,127.0.0.1"
-trusted_hosts = [h.strip() for h in os.getenv("TRUSTED_HOSTS", default_hosts).split(",") if h.strip()]
-
+default_hosts = "*.up.railway.app,localhost,127.0.0.1,healthcheck.railway.app,refurbd.com.au,*.refurbd.com.au"
 if TrustedHostMiddleware:
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
+    hosts = [h.strip() for h in os.getenv("TRUSTED_HOSTS", default_hosts).split(",") if h.strip()]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
 
 # ---------------------------
-# Optional: include API routers if present
-# (This won't crash if your project structure differs.)
+# Routers (mounted under API_PREFIX, default '/api')
 # ---------------------------
-api_prefix = os.getenv("API_PREFIX", "/api")
+API_PREFIX = os.getenv("API_PREFIX", "/api")
 try:
-    # If you have a single combined router at app/api/routes.py
+    # Prefer a single aggregator router if present
     from app.api import routes as api_routes  # type: ignore
     if hasattr(api_routes, "router"):
-        app.include_router(api_routes.router, prefix=api_prefix)
+        app.include_router(api_routes.router, prefix=API_PREFIX)
     else:
         raise ImportError("app.api.routes has no 'router'")
-except Exception as e:
-    # Try common per-module routers
+except Exception:
+    # Fallback: include known route modules one by one
     try:
-        from app.api.routes import auth, projects, billing, renderings  # type: ignore
-        app.include_router(auth.router, prefix=api_prefix)
-        app.include_router(projects.router, prefix=api_prefix)
-        app.include_router(billing.router, prefix=api_prefix)
-        app.include_router(renderings.router, prefix=api_prefix)
-    except Exception as e2:
-        print("No routers included automatically:", e, e2)
+        from app.api.routes.auth import router as auth_router  # type: ignore
+        app.include_router(auth_router, prefix=API_PREFIX)
+    except Exception:
+        pass
+    try:
+        from app.api.routes.projects import router as projects_router  # type: ignore
+        app.include_router(projects_router, prefix=API_PREFIX)
+    except Exception:
+        pass
+    try:
+        from app.api.routes.renderings import router as renderings_router  # type: ignore
+        app.include_router(renderings_router, prefix=API_PREFIX)
+    except Exception:
+        pass
+    try:
+        from app.api.routes.billing import router as billing_router  # type: ignore
+        app.include_router(billing_router, prefix=API_PREFIX)
+    except Exception:
+        pass
+    try:
+        from app.api.routes.admin import router as admin_router  # type: ignore
+        app.include_router(admin_router, prefix=API_PREFIX)
+    except Exception:
+        pass
+    try:
+        from app.api.routes.websockets import router as ws_router  # type: ignore
+        app.include_router(ws_router, prefix=API_PREFIX)
+    except Exception:
+        pass
 
 # ---------------------------
-# Global error handler (keeps errors from killing the app)
+# Error handler
 # ---------------------------
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: Request, exc: Exception):
-    print("Unhandled exception:", exc)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 # ---------------------------
-# Root (nice to have)
+# Root
 # ---------------------------
 @app.get("/", include_in_schema=False)
 def root():
