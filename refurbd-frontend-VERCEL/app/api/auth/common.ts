@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND = process.env.BACKEND_URL!; // e.g. https://your-railway.onrender.com or .up.railway.app
+// Ensure Node.js runtime so process.env and headers APIs are available on Vercel.
+export const runtime = "nodejs";
+
+function readBackendUrl(): string {
+  // Prefer server-only var; fall back to NEXT_PUBLIC_* if someone set that.
+  const v = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "";
+  return (v || "").replace(/\/$/, ""); // trim trailing slash
+}
+
+const BACKEND = readBackendUrl();
 
 function rewriteSetCookie(raw: string | null) {
   if (!raw) return [];
-  // Some runtimes expose multiple cookies concatenated; keep simple & safe:
-  // 1) Remove explicit Domain so cookie becomes host-only (refurbd.com.au)
-  // 2) Force Secure + SameSite=None for cross-site iframes/fetch
   const single = raw.replace(/;\s*Domain=[^;]+/gi, "")
                     .replace(/;\s*HttpOnly/gi, "; HttpOnly")
                     .replace(/;\s*Secure/gi, "; Secure")
@@ -15,10 +21,16 @@ function rewriteSetCookie(raw: string | null) {
 }
 
 async function forwardJSON(req: NextRequest, path: string, init: RequestInit) {
+  if (!BACKEND) {
+    return NextResponse.json(
+      { ok: false, error: "config_error", detail: "BACKEND_URL is not set on the server" },
+      { status: 500 }
+    );
+  }
+
   try {
     const res = await fetch(BACKEND + path, {
       ...init,
-      // Node runtime on Vercel, server-to-server fetch
       headers: { "content-type": "application/json", ...(init.headers || {}) },
       redirect: "manual",
     });
@@ -28,7 +40,6 @@ async function forwardJSON(req: NextRequest, path: string, init: RequestInit) {
     try { data = bodyText ? JSON.parse(bodyText) : {}; } catch { data = { ok: res.ok }; }
 
     const resp = NextResponse.json(data, { status: res.status });
-    // Copy/normalize cookie(s) from upstream -> our domain
     const sc = (res.headers as any).getSetCookie?.() ?? null;
     const raw = sc ? sc.join("\n") : res.headers.get("set-cookie");
     for (const c of rewriteSetCookie(raw)) {
@@ -40,4 +51,4 @@ async function forwardJSON(req: NextRequest, path: string, init: RequestInit) {
   }
 }
 
-export { forwardJSON };
+export { forwardJSON, BACKEND };
