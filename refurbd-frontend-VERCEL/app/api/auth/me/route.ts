@@ -1,13 +1,15 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
-const backend = (u: string) => `${BACKEND_URL}${u}`;
+import { NextRequest, NextResponse } from "next/server";
+const BACKEND = process.env.BACKEND_URL!;
 
-export async function GET() {
-  const token = cookies().get("token")?.value;
-  const headers: Record<string, string> = {};
-  if (token) headers["Cookie"] = `token=${token}`;
-  const r = await fetch(backend("/auth/me"), { headers, credentials: "include" });
-  const text = await r.text();
-  return new NextResponse(text, { status: r.status, headers: { "content-type": "application/json" } });
+export async function GET(req: NextRequest) {
+  try {
+    // forward cookies we set on our domain to the backend
+    const cookie = req.headers.get("cookie") || "";
+    const res = await fetch(BACKEND + "/auth/me", { headers: { cookie }, cache: "no-store" });
+    const text = await res.text();
+    let json: any; try { json = text ? JSON.parse(text) : {}; } catch { json = { ok: res.ok }; }
+    return NextResponse.json(json, { status: res.status });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: "upstream_error", detail: String(e?.message || e) }, { status: 502 });
+  }
 }
