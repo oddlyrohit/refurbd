@@ -3,6 +3,6 @@ import { forwardWithFallbacks } from "../common";
 
 export async function POST(req: NextRequest) {
   return forwardWithFallbacks(req,
-    ["/auth/logout", "/api/auth/logout", "/logout"],
+    ["/logout"],
     { method: "POST", body: "{}" });
 }

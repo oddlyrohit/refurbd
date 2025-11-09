@@ -1,11 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 
-function readBackendUrl(): string {
-  const v = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "";
-  return (v || "").replace(/\/$/, "");
+function readEnv(name: string, fallback = ""): string {
+  const v = process.env[name] || (process.env["NEXT_PUBLIC_" + name] ?? "");
+  return (v || fallback) as string;
 }
+
+function normalizeBackendUrl(v: string): string {
+  let u = (v || "").trim();
+  if (!u) return "";
+  // If scheme missing, assume https (Railway/Render/Heroku defaults)
+  if (!/^https?:\/\//i.test(u)) {
+    u = "https://" + u;
+  }
+  // strip trailing slash
+  u = u.replace(/\/$/, "");
+  return u;
+}
+
+function readBackendUrl(): string {
+  const raw = readEnv("BACKEND_URL", "");
+  return normalizeBackendUrl(raw);
+}
+
+function readAuthPrefix(): string {
+  // e.g. "/api/auth" or "/v1/auth"
+  let p = readEnv("BACKEND_AUTH_PREFIX", "");
+  if (!p) return "";
+  if (!p.startsWith("/")) p = "/" + p;
+  return p.replace(/\/$/, "");
+}
+
 const BACKEND = readBackendUrl();
+const AUTH_PREFIX = readAuthPrefix();
 
 function rewriteSetCookie(raw: string | null) {
   if (!raw) return [];
@@ -32,11 +59,17 @@ async function forwardWithFallbacks(req: NextRequest, paths: string[], init: Req
   if (!BACKEND) {
     return NextResponse.json({ ok: false, error: "config_error", detail: "BACKEND_URL is not set" }, { status: 500 });
   }
+  const candidates = [
+    ...paths.map(p => `${AUTH_PREFIX}${p}`),
+    ...paths.map(p => `/api/auth${p}`),
+    ...paths.map(p => `/auth${p}`),
+    ...paths.map(p => `${p}`),
+  ].map(p => (BACKEND + p).replace(/\/+$/, ""));
+
   let last: any = null;
-  for (const p of paths) {
+  for (const url of candidates) {
     try {
-      const { r, data } = await fetchJSON(BACKEND + p, init);
-      // Accept any non-404 result
+      const { r, data } = await fetchJSON(url, init);
       if (r.status !== 404) {
         const resp = NextResponse.json(data, { status: r.status });
         const sc = (r.headers as any).getSetCookie?.() ?? null;
@@ -46,12 +79,12 @@ async function forwardWithFallbacks(req: NextRequest, paths: string[], init: Req
         }
         return resp;
       }
-      last = { status: r.status, data };
+      last = { status: r.status, url };
     } catch (e: any) {
-      last = { error: String(e?.message || e) };
+      last = { error: String(e?.message || e), url };
     }
   }
-  return NextResponse.json({ ok: false, error: "upstream_not_found", tried: paths, last }, { status: 404 });
+  return NextResponse.json({ ok: false, error: "upstream_not_found", tried: candidates, last, BACKEND, AUTH_PREFIX }, { status: 404 });
 }
 
-export { forwardWithFallbacks, BACKEND };
+export { forwardWithFallbacks, BACKEND, AUTH_PREFIX };
