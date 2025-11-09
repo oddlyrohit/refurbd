@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// Ensure Node.js runtime so process.env and headers APIs are available on Vercel.
 export const runtime = "nodejs";
 
 function readBackendUrl(): string {
-  // Prefer server-only var; fall back to NEXT_PUBLIC_* if someone set that.
   const v = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "";
-  return (v || "").replace(/\/$/, ""); // trim trailing slash
+  return (v || "").replace(/\/$/, "");
 }
-
 const BACKEND = readBackendUrl();
 
 function rewriteSetCookie(raw: string | null) {
@@ -20,35 +16,42 @@ function rewriteSetCookie(raw: string | null) {
   return [single];
 }
 
-async function forwardJSON(req: NextRequest, path: string, init: RequestInit) {
-  if (!BACKEND) {
-    return NextResponse.json(
-      { ok: false, error: "config_error", detail: "BACKEND_URL is not set on the server" },
-      { status: 500 }
-    );
-  }
-
-  try {
-    const res = await fetch(BACKEND + path, {
-      ...init,
-      headers: { "content-type": "application/json", ...(init.headers || {}) },
-      redirect: "manual",
-    });
-
-    const bodyText = await res.text();
-    let data: any;
-    try { data = bodyText ? JSON.parse(bodyText) : {}; } catch { data = { ok: res.ok }; }
-
-    const resp = NextResponse.json(data, { status: res.status });
-    const sc = (res.headers as any).getSetCookie?.() ?? null;
-    const raw = sc ? sc.join("\n") : res.headers.get("set-cookie");
-    for (const c of rewriteSetCookie(raw)) {
-      if (c) resp.headers.append("set-cookie", c);
-    }
-    return resp;
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: "upstream_error", detail: String(e?.message || e) }, { status: 502 });
-  }
+async function fetchJSON(url: string, init: RequestInit) {
+  const r = await fetch(url, {
+    ...init,
+    headers: { "content-type": "application/json", ...(init.headers || {}) },
+    redirect: "manual",
+  });
+  const text = await r.text();
+  let data: any;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { ok: r.ok }; }
+  return { r, data };
 }
 
-export { forwardJSON, BACKEND };
+async function forwardWithFallbacks(req: NextRequest, paths: string[], init: RequestInit) {
+  if (!BACKEND) {
+    return NextResponse.json({ ok: false, error: "config_error", detail: "BACKEND_URL is not set" }, { status: 500 });
+  }
+  let last: any = null;
+  for (const p of paths) {
+    try {
+      const { r, data } = await fetchJSON(BACKEND + p, init);
+      // Accept any non-404 result
+      if (r.status !== 404) {
+        const resp = NextResponse.json(data, { status: r.status });
+        const sc = (r.headers as any).getSetCookie?.() ?? null;
+        const raw = sc ? sc.join("\n") : r.headers.get("set-cookie");
+        for (const c of rewriteSetCookie(raw)) {
+          if (c) resp.headers.append("set-cookie", c);
+        }
+        return resp;
+      }
+      last = { status: r.status, data };
+    } catch (e: any) {
+      last = { error: String(e?.message || e) };
+    }
+  }
+  return NextResponse.json({ ok: false, error: "upstream_not_found", tried: paths, last }, { status: 404 });
+}
+
+export { forwardWithFallbacks, BACKEND };
