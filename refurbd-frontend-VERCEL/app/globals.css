@@ -1,7 +1,6 @@
-/* Global styles loaded by app/layout.tsx */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-html, body { height: 100%; background: white; }
+html, body { height: 100%; background: #f1f5f9; }
 * { box-sizing: border-box; }
