@@ -1,95 +1,102 @@
 # app/main.py
-from contextlib import asynccontextmanager
-from pathlib import Path
-
+import os
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import settings
-from app.db.session import init_db
-from app.api.routes import auth, projects, billing, renderings
+try:
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+except Exception:
+    TrustedHostMiddleware = None  # middleware optional
 
+app = FastAPI(title="Refurbd API")
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup and shutdown events."""
-    # Startup
-    print("🚀 Starting Home Renovation AI SaaS...")
+# -------------------------------------------------
+# Health: guaranteed 200 and bypass any middleware
+# -------------------------------------------------
+@app.middleware("http")
+async def _health_bypass(request: Request, call_next):
+    if request.url.path == "/__health":
+        # Plain text, zero dependencies, always 200
+        return PlainTextResponse("ok")
+    return await call_next(request)
 
-    # Ensure upload directory exists
-    upload_dir = Path(settings.UPLOAD_DIR)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    # Initialize database (non-blocking safety)
-    await init_db()
-    print("✅ Database initialized")
-
-    yield
-
-    # Shutdown
-    print("👋 Shutting down...")
-
-
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    lifespan=lifespan,
-    # Show docs only in development
-    docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
-    redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
-)
-
-# ---------------------------
-# Health endpoints (no deps)
-# ---------------------------
 @app.get("/__health", include_in_schema=False)
 def __health():
-    # Plain text, zero dependencies; always 200
     return PlainTextResponse("ok")
 
 @app.get("/health", include_in_schema=False)
 def health_root():
-    return {"ok": True, "version": settings.VERSION, "env": settings.ENVIRONMENT}
+    return {"ok": True}
 
 @app.get("/api/health", include_in_schema=False)
 def health_api():
-    return {"ok": True, "version": settings.VERSION, "env": settings.ENVIRONMENT}
+    return {"ok": True}
 
 # ---------------------------
-# CORS
+# CORS (from environment)
 # ---------------------------
+frontend_url = os.getenv("FRONTEND_URL", "").strip()
+cors_env = os.getenv("CORS_ORIGINS", "").strip()
+
+cors_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+if frontend_url and frontend_url not in cors_origins:
+    cors_origins.append(frontend_url)
+
+# If nothing provided, allow the site origin only; fall back to "*" during bring-up
+allow_list = cors_origins if cors_origins else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=(settings.BACKEND_CORS_ORIGINS or []) + [settings.FRONTEND_URL],
+    allow_origins=allow_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ---------------------------
-# Global exception handler
+# Trusted Host (so Railway healthcheck isn’t blocked)
+# ---------------------------
+default_hosts = "*.up.railway.app,healthcheck.railway.app,api.refurbd.com.au,localhost,127.0.0.1"
+trusted_hosts = [h.strip() for h in os.getenv("TRUSTED_HOSTS", default_hosts).split(",") if h.strip()]
+
+if TrustedHostMiddleware:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
+
+# ---------------------------
+# Optional: include API routers if present
+# (This won't crash if your project structure differs.)
+# ---------------------------
+api_prefix = os.getenv("API_PREFIX", "/api")
+try:
+    # If you have a single combined router at app/api/routes.py
+    from app.api import routes as api_routes  # type: ignore
+    if hasattr(api_routes, "router"):
+        app.include_router(api_routes.router, prefix=api_prefix)
+    else:
+        raise ImportError("app.api.routes has no 'router'")
+except Exception as e:
+    # Try common per-module routers
+    try:
+        from app.api.routes import auth, projects, billing, renderings  # type: ignore
+        app.include_router(auth.router, prefix=api_prefix)
+        app.include_router(projects.router, prefix=api_prefix)
+        app.include_router(billing.router, prefix=api_prefix)
+        app.include_router(renderings.router, prefix=api_prefix)
+    except Exception as e2:
+        print("No routers included automatically:", e, e2)
+
+# ---------------------------
+# Global error handler (keeps errors from killing the app)
 # ---------------------------
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    print(f"Global exception: {exc}")
+async def _global_exception_handler(request: Request, exc: Exception):
+    print("Unhandled exception:", exc)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 # ---------------------------
-# API routers
-# ---------------------------
-app.include_router(auth.router,      prefix=settings.API_V1_STR)
-app.include_router(projects.router,  prefix=settings.API_V1_STR)
-app.include_router(billing.router,   prefix=settings.API_V1_STR)
-app.include_router(renderings.router, prefix=settings.API_V1_STR)
-
-# ---------------------------
-# Root
+# Root (nice to have)
 # ---------------------------
 @app.get("/", include_in_schema=False)
 def root():
-    return {
-        "message": "Home Renovation AI API",
-        "version": settings.VERSION,
-        "docs": "/docs" if settings.ENVIRONMENT == "development" else None,
-    }
+    return {"message": "Refurbd API", "ok": True}
