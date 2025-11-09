@@ -1,5 +1,4 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  experimental: { serverActions: false }
+module.exports = {
+  // Clean config. No experimental.serverActions (Next 14 enables it by default).
 };
-module.exports = nextConfig;
